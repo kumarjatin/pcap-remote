@@ -27,12 +27,12 @@ import android.content.Intent
 import android.net.Uri
 import android.net.VpnService
 import android.os.Bundle
+import android.os.Environment
 import android.view.Menu
 import android.view.MenuItem
 import android.view.View
 import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
-import androidx.appcompat.app.AppCompatDelegate
 import androidx.fragment.app.Fragment
 import androidx.fragment.app.FragmentManager
 import androidx.fragment.app.FragmentPagerAdapter
@@ -65,6 +65,7 @@ class MainActivity : AppCompatActivity() {
         // in case MainActivity is fully destroyed.
         private var pcapFile: File? = null
         private var pcapPackets = 0
+        private var finalFileName: File? = null
     }
 
     private var selectedApp: String? = null
@@ -129,6 +130,21 @@ class MainActivity : AppCompatActivity() {
         }
 
         MiscUtils.setDarkThemeEnabled(Preferences.darkTheme)
+
+        // Read passed parameters from command line
+        val intent = intent
+        val bundle = intent.extras
+        if (bundle != null) {
+            val action = bundle.getString("action")
+            System.out.println("Action = " + action)
+            if ("start_capture".equals(action)) {
+                selectedApp = bundle.getString("app_name")
+                finalFileName = File(Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS), bundle.getString("file_name"))
+                startCapturing()
+            } else if("stop_capture".equals(action)) {
+                stopCapturing()
+            }
+        }
     }
 
     private fun initAdapter() {
@@ -309,22 +325,23 @@ class MainActivity : AppCompatActivity() {
             showRateAppDialog()
         } else {
             pcapFile?.let { file ->
-                if (file.exists()) {
-                    AlertDialog.Builder(this)
-                            .setCancelable(true)
-                            .setTitle(R.string.main_activity_save_pcap_file_dialog_title)
-                            .setMessage(R.string.main_activity_save_pcap_file_dialog_message)
-                            .setPositiveButton(R.string.main_activity_save_pcap_file_dialog_save_button) { _, _ ->
-                                startSavePcapActivity(file.name)
-                            }
-                            .setNegativeButton(R.string.main_activity_save_pcap_file_dialog_discard_button) { _, _ ->
-                                file.delete()
-                            }
-                            .setOnDismissListener {
-                                showRateAppDialog()
-                            }
-                            .create().show()
-                }
+                startSavePcapActivity(file.name)
+//                if (file.exists()) {
+//                    AlertDialog.Builder(this)
+//                            .setCancelable(true)
+//                            .setTitle(R.string.main_activity_save_pcap_file_dialog_title)
+//                            .setMessage(R.string.main_activity_save_pcap_file_dialog_message)
+//                            .setPositiveButton(R.string.main_activity_save_pcap_file_dialog_save_button) { _, _ ->
+//                                startSavePcapActivity(file.name)
+//                            }
+//                            .setNegativeButton(R.string.main_activity_save_pcap_file_dialog_discard_button) { _, _ ->
+//                                file.delete()
+//                            }
+//                            .setOnDismissListener {
+//                                showRateAppDialog()
+//                            }
+//                            .create().show()
+//                }
             }
         }
     }
@@ -337,15 +354,34 @@ class MainActivity : AppCompatActivity() {
 
     private fun startSavePcapActivity(fileName: String) {
         try {
-            val exportIntent = Intent(Intent.ACTION_CREATE_DOCUMENT)
-            exportIntent.addCategory(Intent.CATEGORY_OPENABLE)
-            exportIntent.type = "application/octet-stream"
-            exportIntent.putExtra(Intent.EXTRA_TITLE, fileName)
-            startActivityForResult(exportIntent, SAVE_PCAP_FILE_REQUEST_ACTIVITY_ID)
+            FileInputStream(pcapFile).use { inputStream ->
+                contentResolver.openOutputStream(Uri.fromFile(finalFileName))?.use { outputStream ->
+                    MiscUtils.copyStream(inputStream, outputStream)
+                }
+            }
+            
+            pcapFile?.delete()
+
+            Toast.makeText(
+                    this,
+                    getString(R.string.main_activity_pcap_file_saved_toast),
+                    Toast.LENGTH_LONG).show()
         } catch (ex: Exception) {
-            Timber.e(ex)
-            ex.message?.let { Toast.makeText(this, it, Toast.LENGTH_LONG).show() }
+            val error = String.format(getString(R.string.main_activity_save_pcap_file_error), ex.message)
+            Timber.e(error)
+            Toast.makeText(this, error, Toast.LENGTH_LONG).show()
         }
+
+//        try {
+//            val exportIntent = Intent(Intent.ACTION_CREATE_DOCUMENT)
+//            exportIntent.addCategory(Intent.CATEGORY_OPENABLE)
+//            exportIntent.type = "application/octet-stream"
+//            exportIntent.putExtra(Intent.EXTRA_TITLE, fileName)
+//            startActivityForResult(exportIntent, SAVE_PCAP_FILE_REQUEST_ACTIVITY_ID)
+//        } catch (ex: Exception) {
+//            Timber.e(ex)
+//            ex.message?.let { Toast.makeText(this, it, Toast.LENGTH_LONG).show() }
+//        }
     }
 
     private fun sendEmail() {
@@ -393,6 +429,7 @@ class MainActivity : AppCompatActivity() {
                 data?.data?.let { uri ->
                     pcapFile?.let { file ->
                         try {
+                            System.out.println("Saving to " + uri.toString() + " or "  + uri.path);
                             FileInputStream(file).use { inputStream ->
                                 contentResolver.openOutputStream(uri)?.use { outputStream ->
                                     MiscUtils.copyStream(inputStream, outputStream)
