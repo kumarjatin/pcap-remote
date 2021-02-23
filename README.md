@@ -28,6 +28,16 @@ Limitations:
 
 Info/How-to: https://egorovandreyrm.com/pcap-remote-tutorial/
 
+Adb Usage
+---------
+```
+// Start the activity
+adb shell 'am start -n com.egorovandreyrm.pcapremote.debug/com.pcapremote.MainActivity --es "action" "start_capture" --es "app_name" <app_name> --es "file_name" "capture.pcap"'
+
+// Stop the activity
+adb shell 'am start -n com.egorovandreyrm.pcapremote.debug/com.pcapremote.MainActivity --es "action" "stop_capture"'
+```
+
 License
 -------
 
